@@ -1,0 +1,12 @@
+{
+"type": "FeatureCollection",
+"name": "Passagens molhadas",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::4674" } },
+"features": [
+{ "type": "Feature", "properties": { "fid": 1, "id": "0F863B48183721781ED1", "Name": "Passagem molhada - São João do Piauí", "description": null, "timestamp": null, "begin": null, "end": null, "altitudeMode": null, "tessellate": -1, "extrude": 1, "visibility": -1, "drawOrder": null, "icon": null }, "geometry": { "type": "Point", "coordinates": [ -42.307076804804566, -8.251085240309246, 0.0 ] } },
+{ "type": "Feature", "properties": { "fid": 2, "id": "00D69F63A03721754785", "Name": "Passagem molhada - São Francisco do Piauí", "description": null, "timestamp": null, "begin": null, "end": null, "altitudeMode": null, "tessellate": -1, "extrude": 1, "visibility": -1, "drawOrder": null, "icon": null }, "geometry": { "type": "Point", "coordinates": [ -42.546335311195037, -7.322698657930418, 0.0 ] } },
+{ "type": "Feature", "properties": { "fid": 3, "id": null, "Name": "Passagem Molhada (Oeiras) Comunidade Alagoinha", "description": "Processo SEI - SAF 00323.001938/2024-80", "timestamp": null, "begin": null, "end": null, "altitudeMode": null, "tessellate": -1, "extrude": 0, "visibility": -1, "drawOrder": null, "icon": null }, "geometry": { "type": "Point", "coordinates": [ -42.489383646248477, -6.914714370929484, 0.0 ] } },
+{ "type": "Feature", "properties": { "fid": 4, "id": null, "Name": "Passagem Molhada (Itainópolis)", "description": "Processo SEI - SAF - 00323.001104/2024-74\n\nLink abaixo: Pasta Salvaguarda \nhttps://drive.google.com/open?id=1eBYm4N1rZjhJ9WJQL3v90_xxKHBduvaZ&usp=drive_fs", "timestamp": null, "begin": null, "end": null, "altitudeMode": null, "tessellate": -1, "extrude": 0, "visibility": -1, "drawOrder": null, "icon": null }, "geometry": { "type": "Point", "coordinates": [ -41.529729495880567, -7.363143865583749, 0.0 ] } },
+{ "type": "Feature", "properties": { "fid": 5, "id": null, "Name": "Passagem Molhada (Oeiras) Comunidade Tapera/Boa Nova", "description": "Processo SAF - SEI 00323.001636/2023-21", "timestamp": null, "begin": null, "end": null, "altitudeMode": null, "tessellate": -1, "extrude": 0, "visibility": -1, "drawOrder": null, "icon": null }, "geometry": { "type": "Point", "coordinates": [ -42.036748181486288, -6.740046184911758, 0.0 ] } }
+]
+}

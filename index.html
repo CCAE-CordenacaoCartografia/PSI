@@ -1,0 +1,2105 @@
+
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>PSI - MAPA DE AÇÕES</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    :root {
+      --gap: 10px;
+      --shadow: 0 2px 6px rgba(0,0,0,0.25);
+      --z-search: 3000;
+      --z-layers: 2200;
+      --z-north: 2100;
+      --z-title: 2000;
+      --z-legend: 1600;
+      --z-coords: 1500;
+    }
+
+    * { font-family: Arial, sans-serif !important; box-sizing: border-box; }
+
+    html, body {
+      margin: 0; padding: 0; height: 100%; width: 100%;
+      overflow: hidden;
+    }
+
+    #map {
+      position: absolute; inset: 0;
+      width: 100% !important; height: 100% !important;
+    }
+
+    /* Título */
+    .map-title {
+      position: fixed;
+      top: var(--gap);
+      left: var(--gap);
+      background: rgba(255,255,255,0.9);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: bold;
+      color: #333;
+      box-shadow: var(--shadow);
+      z-index: var(--z-title);
+      max-width: 45vw;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Coordenadas (sem colidir com a legenda) */
+    #coords {
+      position: fixed;
+      left: var(--gap);
+     bottom: calc(100px + var(--gap));
+      background: rgba(255, 255, 255, 0.8);
+      padding: 6px 8px;
+      font-size: 13px;
+      border-radius: 4px;
+      border: 1px solid rgba(204, 204, 204, 0.6);
+      z-index: var(--z-coords);
+      box-shadow: var(--shadow);
+    }
+
+    /* Busca fixa (topo direito desktop, centralizada no mobile) */
+    #searchContainer {
+      position: fixed;
+      top: var(--gap);
+      right: var(--gap);
+      display: flex;
+      align-items: center;
+      z-index: var(--z-search);
+      width: 44px;           /* recolhido */
+      height: 42px;
+      overflow: hidden;      /* recolhido corta conteúdo */
+      background: white;
+      border-radius: 40px;
+      border: 1px solid #ccc;
+      box-shadow: var(--shadow);
+    }
+    #searchToggle {
+      background: none; border: none; cursor: pointer;
+      font-size: 1.15rem; padding: 0 10px; height: 42px;
+    }
+    #searchMunicipio {
+      flex: 1; border: none; outline: none;
+      font-size: 1rem; padding: 0 10px; height: 42px;
+      display: none; min-width: 0;
+    }
+    #searchContainer.expanded {
+      width: 300px;
+      overflow: visible;      /* permite a lista “sair” do container */
+    }
+    #searchContainer.expanded #searchMunicipio { display: block; }
+/* REMOVE o contorno preto ao clicar */
+.leaflet-container .leaflet-interactive:focus,
+.leaflet-container .leaflet-marker-icon:focus,
+.leaflet-container .leaflet-popup-close-button:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* opcional: popup sem sombra/borda */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  box-shadow: none !important;
+  border: none !important;
+}
+    /* Dropdown ancorado ao container da busca */
+    #listaMunicipios {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      width: 100%;
+      max-height: 280px;
+      overflow-y: auto;
+      background: white;
+      border: 1px solid #ccc;
+      border-top: none;
+      border-radius: 0 0 12px 12px;
+      box-shadow: var(--shadow);
+      display: none;
+      font-size: 14px;
+      z-index: var(--z-search);
+    }
+    #listaMunicipios div {
+      padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee;
+    }
+    #listaMunicipios div:hover { background: #f2f2f2; }
+    #listaMunicipios div.highlighted { background: #007bff; color: #fff; }
+
+    /* Painel de camadas embrulhado (evita empurrar seta norte e título) */
+    #camadasWrapper {
+  position: fixed;
+  top: 56px !important;
+  right: var(--gap);      /* <<< veio para a direita */
+  left: auto;            /* <<< remove âncora esquerda */
+  z-index: var(--z-layers);
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  max-width: min(92vw, 520px);
+}
+    #camadasHeader {
+      background: #007bff; color: #fff; padding: 6px 12px;
+      font-weight: bold; font-size: 14px; cursor: pointer; user-select: none;
+    }
+    .leaflet-control-layers {
+      margin: 0 !important;
+      padding: 6px !important;
+      max-height: 50vh; overflow: auto;
+      border: none !important;
+      box-shadow: none !important;
+    }
+    .leaflet-control-layers.collapsed-panel { display: none !important; }
+
+    /* Legenda fixa, centralizada no rodapé */
+    .legend {
+      position: fixed;
+      bottom:100px;
+      left: 70%;
+      transform: translateX(-50%);
+      background: white;
+      line-height: 18px;
+      color: #333;
+      padding: 12px;
+      font-size: 14px;
+      border-radius: 6px;
+      max-width: min(92vw, 420px);
+      max-height: 40vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow);
+      transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+      z-index: var(--z-legend);
+    }
+    .legend-toggle {
+      position: fixed;
+      bottom: calc(var(--gap) + 48px);
+      left: 70%;
+      transform: translateX(-50%);
+      display: block;
+      background: #007bff; color: white;
+      border: none; padding: 6px 14px;
+      border-radius: 20px; font-size: 14px; cursor: pointer;
+      z-index: var(--z-legend);
+      box-shadow: var(--shadow);
+    }
+    .legend.collapsed {
+      max-height: 0 !important;
+      padding: 0 !important;
+      overflow: hidden;
+      opacity: 0;
+    }
+
+    /* Seta norte (topo direito) */
+    .north-arrow {
+      pointer-events: none;
+      background-image: url('https://upload.wikimedia.org/wikipedia/commons/thumb/7/7f/Map_symbol_north_arrow.svg/64px-Map_symbol_north_arrow.svg.png');
+      background-size: contain; background-repeat: no-repeat;
+      width: 40px; height: 40px; opacity: 0.85;
+      margin: 0;
+    }
+    .leaflet-top.leaflet-right { top: 60px !important; right: var(--gap) !important; }
+
+    /* Botão de upload */
+
+  #uploadBtn {
+  position: fixed;
+  top: 45px;
+  left: var(--gap);       /* <<< foi para a esquerda */
+  right: auto;            /* <<< solta da direita */
+  background: white;
+  padding: 6px 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+  z-index: var(--z-search);
+  box-shadow: var(--shadow);
+}
+    #uploadInput { display: none; }
+
+    /* Rosa dos ventos SBG */
+    .rosa-sbg {
+      position: fixed;
+      left: var(--gap);
+      bottom: var(--gap);
+      width: 140px; height: 140px;
+      transform: scale(0.6); transform-origin: bottom left;
+      pointer-events: none;
+      z-index: 1400;
+    }
+
+    /* Atenção no botão da legenda */
+    .legend-toggle.attention { animation: pulseAttention 2.5s infinite ease-in-out; }
+    @keyframes pulseAttention {
+      0% { transform: translateX(-50%) scale(1); background-color: #007bff; }
+      50% { transform: translateX(-50%) scale(1.06); background-color: #0056b3; }
+      100% { transform: translateX(-50%) scale(1); background-color: #007bff; }
+    }
+
+    /* Mobile */
+ @media (max-width: 768px) {
+  /* mantém no topo-direito no mobile */
+  #searchContainer {
+    right: var(--gap);
+    left: auto;
+    transform: none;   /* <— remove o centrado */
+    top: var(--gap);
+    width: 44px;       /* recolhido */
+  }
+  #searchContainer.expanded {
+    width: min(92vw, 420px); /* não passa da tela */
+  }
+
+
+      #camadasWrapper {
+        top: 100px;
+        max-width: min(92vw, 520px);
+      }
+      .leaflet-control-layers { max-height: 38vh; }
+
+      #coords {
+       bottom: calc(100px + var(--gap));
+        font-size: 12px;
+      }
+      .rosa-sbg { width: 120px; height: 120px; }
+    }
+.leaflet-popup-content {
+  max-width: 300px;   /* largura máxima */
+  max-height: 180px;  /* altura máxima */
+  overflow-y: auto;   /* rolagem se passar do limite */
+  font-size: 13.5px;  /* texto levemente maior */
+  line-height: 1.3;   /* espaço entre linhas */
+}
+
+.leaflet-popup-content-wrapper {
+  padding: 8px; /* espaçamento interno */
+}
+/* Garante que o popup fique acima de todos os botões e painéis */
+.leaflet-pane.leaflet-popup-pane {
+  z-index: 10000 !important; /* maior que o --z-search (3000) */
+}
+
+.leaflet-top.leaflet-left {
+  top: 66px;         /* desce pra não colidir com o título */
+  left: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#creditosLegenda {
+  position: fixed;
+  bottom: 18px;
+  left: 70%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 3px 3px;          /* ajusta espaçamento interno */
+  font-size:7px;
+  border-radius: 3px;
+  box-shadow: 0 2px2px rgba(0,0,0,0.25);
+  display: flex;             /* centraliza com flexbox */
+  align-items: center;       /* centraliza vertical */
+  justify-content: center;   /* centraliza horizontal */
+  text-align: center;        /* garante que linhas múltiplas fiquem centralizadas */
+  z-index: 2000;
+  line-height: 1.4;
+}
+.my-location-dot{
+  width:14px; height:14px;
+  background:#4285F4; border:2px solid #fff; border-radius:50%;
+  box-shadow: 0 0 0 6px rgba(66,133,244,.25), 0 2px 6px rgba(0,0,0,.35);
+}
+/* Ícones SEMARH com efeito hover mais forte */
+.semarh-marker {
+  display:inline-block;
+  width:34px; height:34px;          /* hitbox fixo */
+  transform-origin:center center;
+  transition: transform .2s ease, filter .2s ease;
+}
+
+.semarh-marker:hover {
+  transform: scale(1.35);           /* aumenta bastante */
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.55)); /* sombra mais forte */
+}
+
+/* Garantir que os tooltips fiquem acima de todas as camadas */
+.leaflet-pane.leaflet-tooltip-pane {
+  z-index: 9999 !important; /* maior que qualquer pane de layer */
+}
+/* Ícone Cisternas (efeito hover) */
+.cisterna-marker{
+  display:inline-block;
+  width:30px; height:30px;
+  transform-origin:center center;
+  transition: transform .2s ease, filter .2s ease;
+}
+.cisterna-marker:hover{
+  transform: scale(1.35);
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.55));
+}
+
+/* Ícone Passagens Molhadas (efeito hover) */
+.pm-marker{
+  display:inline-block;
+  width:30px; height:30px;
+  transform-origin:center center;
+  transition: transform .2s ease, filter .2s ease;
+}
+.pm-marker:hover{
+  transform: scale(1.35);
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,.55));
+}
+  </style>
+</head>
+<body>
+  <div id="topbar">
+  <img src="logo-seplan.jpg" alt="Seplan Piauí" />
+  <span>Secretaria do Planejamento</span>
+</div>
+  <div id="map"></div>
+
+  <div class="map-title">PSI - MAPA DE AÇÕES</div>
+  <div id="coords">Lat: -, Lon: -<br>E: -, N: -<br>Fuso: -</div>
+
+  <button id="uploadBtn">Upload KML</button>
+  <input type="file" id="uploadInput" accept=".kml,.kmz,.xml" multiple />
+
+  <!-- Busca + lista acoplada -->
+  <div id="searchContainer">
+    <button id="searchToggle">🔍</button>
+    <input type="text" id="searchMunicipio" placeholder="Pesquisar município" />
+    <div id="listaMunicipios"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://unpkg.com/shp-write/shpwrite.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-ajax/dist/leaflet.ajax.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tokml@0.4.0/tokml.js"></script>
+  <script src="https://unpkg.com/leaflet-omnivore@0.3.4/leaflet-omnivore.min.js"></script>
+
+  <script>
+    const map = L.map('map').setView([-7, -42], 7.48);
+    // ===== Acompanhar localização em tempo real =====
+// ===== Acompanhar localização em tempo real (sem zoom) =====
+let geoMarker = null;
+let geoAccuracy = null;
+
+const myLocIcon = L.divIcon({
+  className: '',
+  html: '<div class="my-location-dot"></div>',
+  iconSize: [18,18],
+  iconAnchor: [9,9]
+});
+
+function onLocationFound(e){
+  const latlng = e.latlng;
+  const radius = e.accuracy || 0;
+
+  if (!geoMarker){
+    geoMarker = L.marker(latlng, { icon: myLocIcon, pane: 'markerPane', interactive:false }).addTo(map);
+  } else {
+    geoMarker.setLatLng(latlng);
+  }
+
+ 
+}
+
+function onLocationError(err){
+  console.warn('Erro localização:', err.message);
+  alert('Não consegui acessar sua localização. HTTPS obrigatório.');
+}
+
+map.on('locationfound', onLocationFound);
+map.on('locationerror', onLocationError);
+
+map.locate({
+  watch: true,            // acompanha continuamente
+  setView: false,         // <<< NÃO centraliza nem aproxima
+  enableHighAccuracy: true,
+  maxZoom: 17
+});
+
+
+    // Criar panes com ordem fixa
+map.createPane('pane-mask');        map.getPane('pane-mask').style.zIndex = 200;
+map.createPane('pane-base');        map.getPane('pane-base').style.zIndex = 300;
+map.createPane('pane-piaui');       map.getPane('pane-piaui').style.zIndex = 360;
+map.createPane('pane-biomas');      map.getPane('pane-biomas').style.zIndex = 370;
+map.createPane('pane-territorios'); map.getPane('pane-territorios').style.zIndex = 410;
+map.createPane('pane-municipios');  map.getPane('pane-municipios').style.zIndex = 420;
+map.createPane('pane-imperial');    map.getPane('pane-imperial').style.zIndex = 500;
+map.createPane('pane-litigio');     map.getPane('pane-litigio').style.zIndex = 550;
+map.createPane('pane-upload');
+map.getPane('pane-upload').style.zIndex = 6000;
+// Pane específico da SEMARH (acima de municípios)
+map.createPane('pane-semarh');
+map.getPane('pane-semarh').style.zIndex = 480;
+// Pane específico da camada PCT (acima de tudo)
+map.createPane('pane-pct');
+map.getPane('pane-pct').style.zIndex = 7000; // maior que todas as outras
+
+// Pane específico das Cisternas (acima de municípios e SEMARH, abaixo de PCT)
+map.createPane('pane-cisternas');
+map.getPane('pane-cisternas').style.zIndex = 490;
+
+// Pane específico dos Assentamentos
+map.createPane('pane-assentamentos');
+map.getPane('pane-assentamentos').style.zIndex = 460;
+
+// Pane específico das Passagens Molhadas
+map.createPane('pane-passagens');
+map.getPane('pane-passagens').style.zIndex = 495; // acima de cisternas e assentamentos
+
+
+    // Ajusta autoPan para abrir popup deslocada dos botões do topo
+L.Popup.prototype.options.autoPan = true;
+L.Popup.prototype.options.autoPanPaddingTopLeft = L.point(10, 90);  // desloca pra baixo
+L.Popup.prototype.options.autoPanPaddingBottomRight = L.point(10, 40);
+    L.control.scale().addTo(map);
+
+    // Move o zoom para baixo à direita (não colide com título/busca)
+    map.zoomControl.remove();
+   L.control.zoom({ position: 'topleft' }).addTo(map);
+
+    // Seta norte
+    const north = L.control({position: "topright"});
+    north.onAdd = function() { return L.DomUtil.create("div", "north-arrow"); };
+    north.addTo(map);
+
+    // Basemaps
+    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' });
+    const esriSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri' });
+    const esriTerrain = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri' });
+    const esriRoad = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles © Esri' });
+    osmLayer.addTo(map);
+
+    /* === Territórios: cores e popup === */
+    const territorioPalette = ['#1f78b4','#33a02c','#e31a1c','#ff7f00','#6a3d9a','#b15928','#a6cee3','#b2df8a','#fb9a99','#fdbf6f','#cab2d6','#ffff99'];
+    const territorioColors = []; let colorIndex = 0;
+    function getColorForTerritorio(nome, codigo = null) {
+      let terr = territorioColors.find(t => t.nome === nome);
+      if (!terr) {
+        const display = codigo ? `TD ${codigo} – ${nome}` : nome;
+        terr = { nome, codigo, label: display, cor: territorioPalette[colorIndex % territorioPalette.length] };
+        territorioColors.push(terr); colorIndex++;
+      }
+      return terr.cor;
+    }
+
+    function formatNumeroPTBR(n, d=2){return n.toLocaleString('pt-BR',{minimumFractionDigits:d,maximumFractionDigits:d});}
+    function generateInfoContent(p){ 
+      const labels = {
+        NM_MUN:"Município:",CD_MUN:"Código do Município:",fid:"Código do Território:",
+        NM_TD:"Território de Desenvolvimento:",AREA_KM2:"Área (km²):",
+        "Aglomerado - PI":"Aglomerado:",pib_porcent_Piaui:"PIB (%) Piauí:",pop_porcent_Piaui:"População (%) Piauí:",
+        pib_porcent_TD:"PIB (%) TD:",pop_porcent_TD:"População (%) TD:",
+        pib_2021:"PIB 2021:",pop_censo2022:"População (Censo 2022):",densidade_demografica:"Densidade demográfica:"
+      };
+      const grupos = {
+        geografico:["NM_MUN","CD_MUN","fid","NM_TD","Aglomerado - PI","AREA_KM2"],
+        populacional:["pop_censo2022","densidade_demografica","pop_porcent_Piaui","pop_porcent_TD"],
+        pib:["pib_2021","pib_porcent_Piaui","pib_porcent_TD"]
+      };
+      function formatValor(key,val){
+        if(val===null||val===undefined) return "-";
+        const num = Number(val);
+        if(!isNaN(num)){
+          if(["pib_porcent_Piaui","pop_porcent_Piaui","pib_porcent_TD","pop_porcent_TD"].includes(key)) return num.toFixed(2).replace('.',',')+"%";
+          if(key==="CD_MUN") return String(Math.trunc(num));
+          if(key==="pop_censo2022") return num.toLocaleString('pt-BR',{maximumFractionDigits:0});
+           if(key==="pib_2021") return formatNumeroPTBR(num * 1000, 2);
+
+          return formatNumeroPTBR(num,2);
+        }
+        return val;
+      }
+      function tabela(titulo,campos){
+        let h = `<div style="text-align:center;font-weight:bold;font-size:1.05em;margin:10px 0;">${titulo}</div><table style="border-collapse:collapse;width:100%;font-size:.95em;">`;
+        campos.forEach(k=>{
+          if(k in p){
+            h+=`<tr><th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:normal;">${labels[k]||k}</th><td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${formatValor(k,p[k])}</td></tr>`;
+          }
+        });
+        return h+="</table>";
+      }
+      return tabela("Informações Geográficas",grupos.geografico)+tabela("Informações Populacionais",grupos.populacional)+tabela("Informações de PIB",grupos.pib);
+    }
+
+    function onEachFeaturePopup(feature, layer) {
+      if (!feature.properties) return;
+      const popupContent = generateInfoContent(feature.properties)+`<button class="download-btn" style="margin-top:5px;">Baixar KML desta feição</button>`;
+      layer.on('click', e => { map.panTo(e.latlng); layer.bindPopup(popupContent).openPopup(e.latlng); });
+      layer.on('popupopen', () => {
+        const btn = document.querySelector('.download-btn');
+        if (btn) btn.onclick = () => {
+          const kml = tokml({ type:"FeatureCollection", features:[feature] });
+          const blob = new Blob([kml], { type: "application/vnd.google-earth.kml+xml" });
+          const url = URL.createObjectURL(blob); const a = document.createElement("a");
+          a.href = url; a.download = "feicao.kml"; a.click(); URL.revokeObjectURL(url);
+        };
+      });
+    }
+
+    function styleTerritorios(f){
+      const nome = f.properties.NM_TD || "Território";
+      const codigo = f.properties.fid || "";
+      const cor = getColorForTerritorio(nome,codigo);
+      return { color: cor, weight: 2, fillColor: cor, fillOpacity: 0.4 };
+    }
+
+    let territorioSelecionado = null;
+    function highlightFeature(e){ e.target.setStyle({ weight:4, color:'#ff6600', fillColor:'#ff6600', fillOpacity:0.5 }); e.target.bringToFront(); }
+    let municipioSelecionado = null;
+    function resetHighlight(e){ if (municipioSelecionado !== e.target) municipiosLayer.resetStyle(e.target); }
+
+    function highlightTerritory(nome) {
+      territoriosLayer.eachLayer(layer => {
+        if (!layer.feature) return;
+        const nt = layer.feature.properties.NM_TD;
+        const ct = layer.feature.properties.fid;
+        if (nt === nome) {
+          const cor = getColorForTerritorio(nt, ct);
+          layer.setStyle({ color: cor, weight: 3, fillColor: cor, fillOpacity: 0.8 });
+          map.fitBounds(layer.getBounds());
+        } else {
+          layer.setStyle({ color:"#222", weight:1, fillColor:"#222", fillOpacity:0.8 });
+        }
+      });
+      municipiosLayer.eachLayer(mLayer => {
+        mLayer.off("mouseover", highlightFeature);
+        mLayer.off("mouseout", resetHighlight);
+        mLayer.on({ mouseover: highlightFeature, mouseout: resetHighlight });
+      });
+      document.querySelectorAll('.territorio-item').forEach(item=>{
+        item.style.fontWeight = (item.getAttribute('data-nome')===nome)?"bold":"normal";
+        item.style.color = (item.getAttribute('data-nome')===nome)?"#000":"";
+      });
+    }
+
+
+/* === CISTERNAS === */
+
+/* Ícone: caixa d'água cilíndrica sobre pilares + gota à frente */
+function cisternaIconHTML(){
+  return `
+  <svg viewBox="0 0 64 64" width="30" height="30" aria-label="Cisterna (caixa d'água)">
+    <defs>
+      <filter id="cisternaShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-opacity=".35"/>
+      </filter>
+      <linearGradient id="tankGrad" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" stop-color="#b9d4f7"/>
+        <stop offset="1" stop-color="#6aa3e8"/>
+      </linearGradient>
+      <linearGradient id="dropGrad" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0" stop-color="#9ad3ff"/>
+        <stop offset="1" stop-color="#2986cc"/>
+      </linearGradient>
+    </defs>
+
+    <g filter="url(#cisternaShadow)">
+      <!-- Pilares -->
+      <rect x="18" y="34" width="6" height="16" rx="2" fill="#6b7e8f"/>
+      <rect x="40" y="34" width="6" height="16" rx="2" fill="#6b7e8f"/>
+      <rect x="29" y="34" width="6" height="16" rx="2" fill="#6b7e8f"/>
+      <!-- Travessas -->
+      <rect x="18" y="44" width="28" height="3" rx="1.5" fill="#8296a7"/>
+      <rect x="18" y="37" width="28" height="3" rx="1.5" fill="#8296a7"/>
+
+      <!-- Caixa d'água (cilindro) -->
+      <rect x="15" y="16" width="34" height="16" rx="8" fill="url(#tankGrad)" stroke="#0b4c7a" stroke-width="2"/>
+      <!-- Tampa/aro superior para dar volume -->
+      <ellipse cx="32" cy="16" rx="17" ry="5" fill="#d7e6fb" stroke="#0b4c7a" stroke-width="2"/>
+
+      <!-- Gota à frente (ligeiro overlap) -->
+      <path d="M48 24 C48 24, 40 34, 40 40 c0 5,4.5 9,8 9s8-4,8-9c0-6-8-16-8-16z"
+            fill="url(#dropGrad)" stroke="#0b4c7a" stroke-width="2"/>
+      <path d="M45.5 33c-2 3.5-2 6.5 0 8.5" fill="none" stroke="white" stroke-width="2" opacity=".7"/>
+    </g>
+  </svg>`;
+}
+
+/* tabela com TODOS os campos da feição */
+function cisternaTabelaCompleta(props){
+  const keys = Object.keys(props || {});
+  if (!keys.length) return '<i>Sem atributos</i>';
+  let html = '<table style="border-collapse:collapse;width:100%;font-size:.95em;">';
+  keys.forEach(k=>{
+    const v = props[k];
+    const val = (v === null || v === undefined || v === '') ? '-' : v;
+    html += `
+      <tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:bold;">${k}</th>
+        <td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${val}</td>
+      </tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
+/* monta o HTML do popup + botão de download */
+function popupCisternaHTML(feature){
+  const tabela = cisternaTabelaCompleta(feature.properties || {});
+  return `
+    <div style="font-weight:bold;text-align:center;margin-bottom:6px;">CISTERNA</div>
+    ${tabela}
+    <button class="cisterna-download-btn" style="margin-top:8px;">Baixar KML desta cisterna</button>
+  `;
+}
+
+function wireDownloadKML(layer, feature){
+  layer.once('popupopen', (e)=>{
+    const el = e.popup.getElement();
+    const btn = el && el.querySelector('.cisterna-download-btn');
+    if (!btn) return;
+
+    btn.addEventListener('click', (evt)=>{
+      evt.stopPropagation();
+      if (typeof tokml !== 'function') {
+        alert('Erro: biblioteca tokml não carregada.');
+        return;
+      }
+      let kml = tokml({ type:"FeatureCollection", features:[feature] });
+      const estilo = `
+        <Style id="cisternaStyle">
+          <LineStyle><color>ffff7f00</color><width>3</width></LineStyle>
+          <PolyStyle><color>66ffcc66</color><fill>1</fill><outline>1</outline></PolyStyle>
+        </Style>`;
+      kml = kml
+        .replace("</Document>", `${estilo}</Document>`)
+        .replace(/<Placemark>/g,'<Placemark><styleUrl>#cisternaStyle</styleUrl>');
+
+      const nomeBase =
+        (feature.properties?.NM_MUN ?? feature.properties?.Municipio ?? feature.properties?.MUNICIPIO ?? 'cisterna')
+          .toString().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+          .replace(/[^\w\s-]/g,"").replace(/\s+/g,"_");
+
+      const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${nomeBase}.kml`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+  });
+}
+
+/* abre popup no hover e também no clique; efeito hover é via CSS */
+function onEachCisterna(feature, layer){
+  const show = (ev)=>{
+    const at = ev?.latlng || (layer.getLatLng && layer.getLatLng()) || undefined;
+    layer.bindPopup(popupCisternaHTML(feature)).openPopup(at);
+    wireDownloadKML(layer, feature);
+  };
+  layer.on('mouseover', show);
+  layer.on('click', show);
+  layer.on('mouseout', ()=> layer.closePopup());
+}
+
+/* camada a partir do GeoJSON (pontos viram markers com o ícone da caixa d’água) */
+const cisternasLayer = new L.GeoJSON.AJAX("cisternas.geojson", {
+  pane: 'pane-cisternas',
+  pointToLayer: (feature, latlng) => L.marker(latlng, {
+    icon: L.divIcon({
+      className: 'cisterna-marker',
+      html: cisternaIconHTML(),
+      iconSize: [30,30],
+      iconAnchor: [15,15]
+    }),
+    pane: 'pane-cisternas'
+  }),
+  onEachFeature: onEachCisterna
+}).addTo(map);
+
+/* === Camada: Passagens Molhadas === */
+function stylePassagem(f){
+   return { color:'#0D47A1', weight:3, fillColor:'#0D47A1', fillOpacity:0.35 };
+}
+
+const passagensLayer = new L.GeoJSON.AJAX("Passagens%20molhadas.geojson", {
+  pane: 'pane-passagens',
+  // Se for ponto: usa o ícone SVG
+  pointToLayer: (feature, latlng) => L.marker(latlng, {
+    icon: L.divIcon({
+      className: 'pm-marker',
+      html: passagemIconHTML(),
+      iconSize: [30,30],
+      iconAnchor: [15,15]
+    }),
+    pane: 'pane-passagens'
+  }),
+  // Se for linha/polígono: aplica estilo
+  style: stylePassagem,
+  onEachFeature: onEachPassagem
+}).addTo(map);
+
+// (opcional) centraliza quando carregar
+passagensLayer.on('data:loaded', ()=>{
+  try { map.fitBounds(passagensLayer.getBounds(), { padding:[20,20] }); } catch(_){}
+});
+
+
+
+
+
+
+
+/* === PASSAGENS MOLHADAS === */
+function passagemIconHTML(){
+  return `
+  <svg viewBox="0 0 64 64" width="30" height="30" aria-label="Passagem molhada">
+    <defs>
+      <filter id="pmShadow" x="-20%" y="-20%" width="140%" height="140%">
+        <feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-opacity=".35"/>
+      </filter>
+     <linearGradient id="waterGrad" x1="0" x2="0" y1="0" y2="1">
+  <stop offset="0" stop-color="#5B8BD6"/>
+  <stop offset="1" stop-color="#0D47A1"/>
+</linearGradient>
+    </defs>
+    <g filter="url(#pmShadow)">
+      <rect x="6" y="38" width="52" height="14" rx="3" fill="url(#waterGrad)"/>
+      <rect x="8" y="30" width="48" height="8" rx="2" fill="#7a8a99"/>
+      <rect x="8" y="26" width="48" height="3" rx="1.5" fill="#546472"/>
+      <rect x="8" y="39" width="48" height="2" rx="1" fill="#546472" opacity=".8"/>
+    </g>
+  </svg>`;
+}
+
+function passagemTabelaCompleta(props){
+  const keys = Object.keys(props || {});
+  if (!keys.length) return '<i>Sem atributos</i>';
+  let html = '<table style="border-collapse:collapse;width:100%;font-size:.95em;">';
+  keys.forEach(k=>{
+    const v = props[k];
+    const val = (v === null || v === undefined || v === '') ? '-' : v;
+    html += `
+      <tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:bold;">${k}</th>
+        <td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${val}</td>
+      </tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
+function popupPassagemHTML(feature){
+  const tabela = passagemTabelaCompleta(feature.properties || {});
+  return `
+    <div style="font-weight:bold;text-align:center;margin-bottom:6px;">PASSAGEM MOLHADA</div>
+    ${tabela}
+    <button class="pm-download-btn" style="margin-top:8px;">Baixar KML desta feição</button>
+  `;
+}
+
+function wireDownloadKMLPassagem(layer, feature){
+  layer.once('popupopen', (e)=>{
+    const el = e.popup.getElement();
+    const btn = el && el.querySelector('.pm-download-btn');
+    if (!btn) return;
+    btn.addEventListener('click', (evt)=>{
+      evt.stopPropagation();
+      if (typeof tokml !== 'function') { alert('Erro: biblioteca tokml não carregada.'); return; }
+      let kml = tokml({ type:"FeatureCollection", features:[feature] });
+      const estilo = `
+        <Style id="pmStyle">
+          <LineStyle><color>ff007fff</color><width>3</width></LineStyle>
+          <PolyStyle><color>6699ccff</color><fill>1</fill><outline>1</outline></PolyStyle>
+        </Style>`;
+      kml = kml.replace("</Document>", `${estilo}</Document>`)
+               .replace(/<Placemark>/g,'<Placemark><styleUrl>#pmStyle</styleUrl>');
+      const nomeBase = (feature.properties?.NM_MUN ?? feature.properties?.Municipio ?? 'passagem_molhada')
+        .toString().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\w\s-]/g,"").replace(/\s+/g,"_");
+      const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `${nomeBase}.kml`;
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    });
+  });
+}
+
+function onEachPassagem(feature, layer){
+  layer.bindTooltip("Passagem Molhada", { sticky:true, direction:'top', opacity:0.95, offset:[0,-6] });
+  layer.on('mouseover', ()=>{ 
+  try { 
+    layer.setStyle && layer.setStyle({ 
+      weight:4, 
+      color:'#0B3C8C',      // um tom acima do base
+      fillColor:'#3D6BB3',  // azul-escuro suavizado
+      fillOpacity:0.55 
+    }); 
+  } catch{} 
+});  layer.on('mouseout',  (e)=>{ try { passagensLayer.resetStyle && passagensLayer.resetStyle(e.target); } catch{} });
+  layer.on('click', (ev)=>{
+    const at = ev.latlng || (layer.getLatLng && layer.getLatLng()) || undefined;
+    layer.bindPopup(popupPassagemHTML(feature)).openPopup(at);
+    wireDownloadKMLPassagem(layer, feature);
+  });
+}
+
+
+
+
+
+
+/* ==== POVOS E COMUNIDADES TRADICIONAIS (PCT) ==== */
+
+// estilo base (verde azulado)
+function stylePCT(feat){
+  return { color:'#FF6600', weight:2, fillColor:'#FF9800', fillOpacity:0.45 };
+}
+
+// destaque no hover (bem visível)
+function highlightPCT(e){
+  const layer = e.target;
+  layer.setStyle({
+    color:'#FF3D00',
+    weight: 4,
+    fillColor:'#FFB74D',
+    fillOpacity:0.65
+  });
+  if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) layer.bringToFront();
+}
+
+// reset do hover
+function resetHighlightPCT(e){
+  pctLayer.resetStyle(e.target);
+}
+
+// gera tabela com **todos** os campos das propriedades
+function pctTabelaCompleta(props){
+  const keys = Object.keys(props || {});
+  if (!keys.length) return '<i>Sem atributos</i>';
+  let html = '<table style="border-collapse:collapse;width:100%;font-size:.95em;">';
+  keys.forEach(k=>{
+    const v = props[k];
+    const val = (v === null || v === undefined || v === '') ? '-' : v;
+    html += `
+      <tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:bold;">${k}</th>
+        <td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${val}</td>
+      </tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
+// onEach para popup + hover + download KML
+function onEachPCT(feature, layer){
+  // tooltip no hover do mouse
+  layer.bindTooltip("Povos e Comunidades Tradicionais", {
+    sticky: true, direction: 'top', opacity: 0.9, offset: [0,-4]
+  });
+
+  // hover visual
+  layer.on({ mouseover: highlightPCT, mouseout: resetHighlightPCT });
+
+  // popup com todos os campos + botão baixar KML
+  layer.on('click', (ev)=>{
+    const at = ev.latlng || (layer.getLatLng && layer.getLatLng()) || undefined;
+
+    const tabela = pctTabelaCompleta(feature.properties || {});
+    const html = `
+      <div style="font-weight:bold;text-align:center;margin-bottom:6px;">
+        POVOS E COMUNIDADES TRADICIONAIS
+      </div>
+      ${tabela}
+      <button class="pct-download-btn" style="margin-top:8px;">Baixar KML desta feição</button>
+    `;
+
+    layer.bindPopup(html).openPopup(at);
+
+    // wire do botão (no momento em que a popup abre)
+    layer.once('popupopen', (e)=>{
+      const el = e.popup.getElement();
+      const btn = el && el.querySelector('.pct-download-btn');
+      if (!btn) return;
+      btn.addEventListener('click', (evt)=>{
+        evt.stopPropagation();
+
+        // monta KML da **feição** com um estilo simples
+        if (typeof tokml !== 'function') {
+          alert('Erro: biblioteca tokml não carregada.');
+          return;
+        }
+        let kml = tokml({ type:"FeatureCollection", features:[feature] });
+
+        const estilo = `
+          <Style id="pctStyle">
+            <LineStyle><color>ffffe500</color><width>3</width></LineStyle>  <!-- ARGB (BGR invertido no KML) -->
+            <PolyStyle><color>66c4cb80</color><fill>1</fill><outline>1</outline></PolyStyle>
+          </Style>`;
+        kml = kml
+          .replace("</Document>", `${estilo}</Document>`)
+          .replace(/<Placemark>/g,'<Placemark><styleUrl>#pctStyle</styleUrl>');
+
+        // nome de arquivo a partir de um campo comum, senão "pct_feicao"
+        const nomeBase =
+          (feature.properties?.nome ?? feature.properties?.NOME ?? feature.properties?.NM_MUN ?? 'pct_feicao')
+            .toString()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+            .replace(/[^\w\s-]/g,"").replace(/\s+/g,"_");
+
+        const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `${nomeBase}.kml`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      });
+    });
+  });
+}
+
+
+    function onEachMunicipio(feature, layer){
+      const nome = feature.properties.NM_MUN || "Município desconhecido";
+      layer.bindTooltip(`<b>${nome}</b><br><i>Clique para mais informações</i>`, { sticky:false, direction:'top', opacity:0.9 });
+      layer.on("popupopen", ()=>layer.closeTooltip());
+      layer.on({ mouseover: highlightFeature, mouseout: resetHighlight });
+      layer.on("click", ()=>{
+        if (municipioSelecionado && municipioSelecionado !== layer) municipiosLayer.resetStyle(municipioSelecionado);
+        municipioSelecionado = layer;
+        layer.setStyle({ weight:4, color:'#ff6600', fillColor:'#ff6600', fillOpacity:0.5 });
+      });
+
+      if (feature.properties) {
+        layer.bindPopup(
+          generateInfoContent(feature.properties)+
+          `<button class="download-btn" style="margin-top:5px;">Baixar KML deste município</button>`
+        );
+        layer.on('popupopen', (e)=>{
+          const popupEl = e.popup.getElement();
+          const btn = popupEl.querySelector('.download-btn');
+          if (btn) btn.addEventListener('click', ()=>{
+            const nomeArquivo = (feature.properties?.NM_MUN || "municipio")
+              .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+              .replace(/ç/g,"c").replace(/Ç/g,"C")
+              .replace(/[^\w\s-]/g,"").replace(/\s+/g,"_");
+            let kml = tokml({ type:"FeatureCollection", features:[feature] });
+            const estiloKML = `
+              <Style id="customStyle">
+                <LineStyle><color>ff0000ff</color><width>2</width></LineStyle>
+                <PolyStyle><color>00ff0000</color><fill>1</fill><outline>1</outline></PolyStyle>
+              </Style>`;
+            kml = kml.replace("</Document>", `${estiloKML}</Document>`).replace(/<Placemark>/g,'<Placemark><styleUrl>#customStyle</styleUrl>');
+            const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+            const url = URL.createObjectURL(blob); const a = document.createElement("a");
+            a.href = url; a.download = `${nomeArquivo}.kml`; a.click(); URL.revokeObjectURL(url);
+          });
+        });
+      }
+    }
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && municipioSelecionado) {
+        municipioSelecionado.closePopup();
+        municipiosLayer.resetStyle(municipioSelecionado);
+        municipioSelecionado = null;
+      }
+    });
+
+    // Layers de dados
+   const territoriosLayer = new L.GeoJSON.AJAX("territorios.geojson", { 
+  pane: 'pane-territorios',
+  style: styleTerritorios, 
+  onEachFeature: onEachTerritorio 
+})
+    // === Clicar fora limpa seleção ===
+// Clicar fora de qualquer território/município limpa seleção e fecha legenda
+map.on("click", function (e) {
+  // Se o clique veio numa feição (SVG com .leaflet-interactive), não faz nada
+  const t = e.originalEvent?.target;
+  if (t && (t.classList?.contains('leaflet-interactive') || t.closest?.('.leaflet-interactive'))) {
+    return;
+  }
+
+  // Limpa seleção de território
+  territorioSelecionado = null;
+  territoriosLayer.eachLayer(layer => {
+    territoriosLayer.resetStyle(layer);
+  });
+
+  // Limpa seleção de município
+  if (municipioSelecionado) {
+    municipiosLayer.resetStyle(municipioSelecionado);
+    municipioSelecionado = null;
+  }
+
+  // Fecha popups abertos
+  map.closePopup();
+
+  // Fecha a legenda
+  const legendDiv = document.querySelector('.legend');
+  const toggleBtn = document.querySelector('.legend-toggle');
+  if (legendDiv && toggleBtn && !legendDiv.classList.contains('collapsed')) {
+    legendDiv.classList.add('collapsed');
+    toggleBtn.textContent = 'Selecionar  territórios';
+    toggleBtn.classList.remove('attention');
+  }
+});
+
+
+    // Fallback: se em 2s não criou a legenda, força criar
+    setTimeout(() => {
+      if (!document.querySelector('.legend-toggle')) addLegend();
+    }, 2000);
+function onEachTerritorio(feature, layer) {
+  layer.on({
+    mouseover: highlightFeature,
+    mouseout: (e)=>territoriosLayer.resetStyle(e.target),
+
+    // ▼ SUBSTITUIR A PARTIR DAQUI
+click: function (e) {
+  // impede o clique subir pro mapa (senão ele fecha o popup)
+  L.DomEvent.stop(e);
+
+  const territorioNome  = feature.properties?.NM_TD;
+  const territorioCodigo = feature.properties?.fid;
+
+  // ===== Estatísticas agregadas do território =====
+  // (requer o bloco de cálculo após a criação do municipiosLayer)
+  const tdKey   = String(territorioCodigo ?? territorioNome);
+  const tdStats = (typeof territoryStats !== 'undefined') ? territoryStats.get(tdKey) : null;
+
+  // Formatação numérica
+  function fmt(n, d=2){
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '-';
+    return v.toLocaleString('pt-BR', { minimumFractionDigits:d, maximumFractionDigits:d });
+  }
+
+  // Monta tabela de totais
+  let totaisHtml = '';
+  if (tdStats) {
+    const pibExibicao = tdStats.pib * 1000; // mantém o padrão do seu popup de município
+    totaisHtml =
+      `<hr><b>Totais do Território</b>
+       <table style="border-collapse:collapse;width:100%;font-size:.95em;margin-top:6px;">
+         <tr>
+           <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:normal;">População (Censo 2022)</th>
+           <td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${fmt(tdStats.pop,0)}</td>
+         </tr>
+         <tr>
+           <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:normal;">PIB 2021 (R$)</th>
+           <td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${fmt(pibExibicao,2)}</td>
+         </tr>
+         <tr>
+           <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:normal;">População (% do Piauí)</th>
+           <td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${fmt(tdStats.pop_pct_piaui,2)}%</td>
+         </tr>
+         <tr>
+           <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:normal;">PIB (% do Piauí)</th>
+           <td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${fmt(tdStats.pib_pct_piaui,2)}%</td>
+         </tr>
+       </table>`;
+  }
+
+  // ===== Lista de municípios do território =====
+  const municipios = [];
+  municipiosLayer.eachLayer(mLayer=>{
+    const p = mLayer.feature?.properties || {};
+    if ((p.NM_TD && territorioNome && p.NM_TD === territorioNome) ||
+        (p.fid && territorioCodigo && p.fid === territorioCodigo)) {
+      municipios.push(p.NM_MUN || "(sem nome)");
+    }
+  });
+  municipios.sort((a,b)=>a.localeCompare(b,'pt-BR'));
+
+  const baseHtml =
+    `<b>Território:</b> ${territorioNome || "-"}<br>`+
+    `<b>Código:</b> ${territorioCodigo || "-"}<br>`+
+    `<button class="download-btn" style="margin-top:5px;">Baixar KML deste território</button>` +
+    totaisHtml;
+
+  const listaHtml = municipios.length
+    ? `<hr><b>Municípios (${municipios.length}):</b>
+       <div style="max-height:150px;overflow:auto;margin-top:6px;">
+         <ul style="margin:0;padding-left:18px;">${municipios.map(n=>`<li>${n}</li>`).join('')}</ul>
+       </div>`
+    : `<hr><i>Nenhum município associado encontrado.</i>`;
+
+  layer.bindPopup(baseHtml + listaHtml);
+
+  // registra UMA VEZ o listener para este popup
+  layer.once('popupopen', (ev)=>{
+    const popupEl = ev.popup.getElement();
+    const btn = popupEl.querySelector('.download-btn');
+    if (!btn) return;
+
+    btn.addEventListener('click', (ev2)=>{
+      ev2.stopPropagation();
+
+      if (typeof tokml !== 'function') {
+        alert('Erro: biblioteca tokml não carregada.');
+        return;
+      }
+
+      const nomeArquivo = (layer.feature.properties?.NM_TD || "territorio")
+        .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+        .replace(/[^\w\s-]/g,"").replace(/\s+/g,"_");
+
+      let kml = tokml({ type:"FeatureCollection", features:[layer.feature] });
+
+      const estiloKML = `
+        <Style id="customStyle">
+          <LineStyle><color>ff00ffff</color><width>5</width></LineStyle>
+          <PolyStyle><color>00ffffff</color><fill>1</fill><outline>1</outline></PolyStyle>
+        </Style>`;
+      kml = kml
+        .replace("</Document>", `${estiloKML}</Document>`)
+        .replace(/<Placemark>/g,'<Placemark><styleUrl>#customStyle</styleUrl>');
+
+      const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${nomeArquivo}.kml`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+  });
+
+  layer.openPopup();
+}
+// ▲ ATÉ AQUI
+
+  });
+}
+
+// ---------- ASSENTAMENTOS (INTERPI) ----------
+
+// Estilo base
+function styleAssent(f){
+  return { color:'#00695C', weight:2.5, fillColor:'#26A69A', fillOpacity:0.35 };
+}
+
+// Hover (destaque)
+function highlightAssent(e){
+  const l = e.target;
+  l.setStyle({ color:'#004D40', weight:4, fillColor:'#80CBC4', fillOpacity:0.55 });
+  if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) l.bringToFront();
+}
+// Reset hover
+function resetHighlightAssent(e){ assentLayer.resetStyle(e.target); }
+
+// Tabela com TODOS os campos
+function assentTabelaCompleta(props){
+  const keys = Object.keys(props || {});
+  if (!keys.length) return '<i>Sem atributos</i>';
+  let html = '<table style="border-collapse:collapse;width:100%;font-size:.95em;">';
+  keys.forEach(k=>{
+    const v = props[k];
+    const val = (v === null || v === undefined || v === '') ? '-' : v;
+    html += `
+      <tr>
+        <th style="text-align:left;padding:6px 8px;border-bottom:1px solid #ddd;font-weight:bold;">${k}</th>
+        <td style="text-align:right;padding:6px 8px;border-bottom:1px solid #ddd;">${val}</td>
+      </tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
+// Popup + botão Baixar KML
+function onEachAssent(feature, layer){
+  // Tooltip sempre mostra o nome da camada, não o atributo
+layer.bindTooltip("Assentamentos Rurais", { 
+  sticky: true, 
+  direction: 'top', 
+  opacity: 0.95, 
+  offset: [0, -6] 
+});
+
+  layer.on({ mouseover: highlightAssent, mouseout: resetHighlightAssent });
+
+  layer.on('click', (ev)=>{
+    const at = ev.latlng || undefined;
+    const tabela = assentTabelaCompleta(feature.properties || {});
+    const html = `
+      <div style="font-weight:bold;text-align:center;margin-bottom:6px;">ASSENTAMENTO RURAL</div>
+      ${tabela}
+      <button class="assent-download-btn" style="margin-top:8px;">Baixar KML deste assentamento</button>
+    `;
+    layer.bindPopup(html).openPopup(at);
+
+    // Wire do botão quando a popup abrir
+    layer.once('popupopen', (e)=>{
+      const el = e.popup.getElement();
+      const btn = el && el.querySelector('.assent-download-btn');
+      if (!btn) return;
+
+      btn.addEventListener('click', (evt)=>{
+        evt.stopPropagation();
+        if (typeof tokml !== 'function') {
+          alert('Erro: biblioteca tokml não carregada.');
+          return;
+        }
+        // Gera KML da feição com estilo simples
+        let kml = tokml({ type:"FeatureCollection", features:[feature] });
+        const estilo = `
+          <Style id="assentStyle">
+            <LineStyle><color>ff2a7f65</color><width>3</width></LineStyle>   <!-- ARGB -->
+            <PolyStyle><color>6634a69a</color><fill>1</fill><outline>1</outline></PolyStyle>
+          </Style>`;
+        kml = kml
+          .replace("</Document>", `${estilo}</Document>`)
+          .replace(/<Placemark>/g,'<Placemark><styleUrl>#assentStyle</styleUrl>');
+
+        const nomeArq = (nome || 'assentamento')
+          .toString().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+          .replace(/[^\w\s-]/g,"").replace(/\s+/g,"_");
+
+        const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `${nomeArq}.kml`; a.click();
+        URL.revokeObjectURL(url);
+      });
+    });
+  });
+}
+// ---------- /ASSENTAMENTOS ----------
+
+
+
+
+
+
+
+// === Municípios base (cadastro Piauí) — FICAM DESLIGADOS AO ABRIR ===
+const municipiosLayer = new L.GeoJSON.AJAX("municipios.geojson", { 
+  pane: 'pane-municipios',
+  style: ()=>({ color:'#000', weight:1.5, fillOpacity:0 }),
+  onEachFeature: onEachMunicipio
+}); // <-- sem addTo(map)
+
+// Índices para buscar atributos por código/nome
+const muniByCode = new Map();
+const muniByName = new Map();
+
+municipiosLayer.on('data:loaded', () => {
+  muniByCode.clear(); muniByName.clear();
+  municipiosLayer.eachLayer(l => {
+    const p = l?.feature?.properties || {};
+    if (p.CD_MUN != null) muniByCode.set(String(p.CD_MUN).trim(), p);
+    if (p.NM_MUN)         muniByName.set(String(p.NM_MUN).trim().toLowerCase(), p);
+  });
+});
+  
+
+// Garante o pane (já existe acima, mas deixo idempotente)
+if (!map.getPane('pane-semarh')) {
+  map.createPane('pane-semarh');
+  map.getPane('pane-semarh').style.zIndex = 480;
+}
+
+/* Ícones SEMARH em SVG inline (baseados nas imagens enviadas) */
+function semarhSVG(tipoNorm) {
+  const t = (tipoNorm || '').toLowerCase();
+  const isCurso =
+    t.includes('curso') ||
+    t.includes('meio ambiente') ||
+    t.includes('jovens rurais e professores');
+
+  if (isCurso) {
+    // 🎓 CAPELO – azul-acinzentado com pingente verde-menta
+    return `
+<svg viewBox="0 0 64 64" width="34" height="34" role="img" aria-label="Curso">
+  <defs>
+    <filter id="capeloShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <g filter="url(#capeloShadow)">
+    <!-- topo do capelo -->
+    <polygon points="6,26 32,14 58,26 32,38"
+             fill="#586D7C"/>
+    <!-- corpo (touca) com leve arredondado -->
+    <path d="M16 35c0 8 32 8 32 0v7c0 6-32 6-32 0z"
+          fill="#586D7C"/>
+    <!-- cordão -->
+    <rect x="51" y="26" width="3" height="16" rx="1.5" fill="#89D6CA"/>
+    <!-- nó -->
+    <rect x="49.5" y="41" width="6" height="2.8" rx="1.2" fill="#58C7B7"/>
+    <!-- pingente -->
+    <rect x="50.6" y="43.2" width="4.8" height="8.2" rx="2.2" fill="#9AE1D7"/>
+  </g>
+</svg>`;
+  } else {
+    // 📣 MEGAFONE – tons de azul com detalhe escuro
+    return `
+<svg viewBox="0 0 64 64" width="34" height="34" role="img" aria-label="Campanha">
+  <defs>
+    <filter id="megaShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1.2" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <g filter="url(#megaShadow)">
+    <!-- bocal/parte escura -->
+    <path d="M10 30c0-4 3-7 7-7h7v14h-7c-4 0-7-3-7-7z" fill="#0C3454"/>
+    <!-- corpo claro do megafone -->
+    <path d="M24 18 l22 4c7 1 10 5 10 10s-3 9-10 10l-22 4z"
+          fill="#8ED0F6"/>
+    <!-- faixa intermediária -->
+    <path d="M24 24 l22 3c5 .7 7 3 7 5s-2.1 4.3-7 5l-22 3z"
+          fill="#51B3EC"/>
+    <!-- aro escuro da boca -->
+    <ellipse cx="56" cy="32" rx="3.4" ry="8.6" fill="#0C3454"/>
+    <!-- manche/pegador -->
+    <rect x="24" y="36" width="6.5" height="11" rx="2" fill="#2B6AA6"/>
+    <rect x="24.8" y="37" width="5" height="9.5" rx="1.6" fill="#3D87C9"/>
+  </g>
+</svg>`;
+  }
+}
+
+
+/* Normaliza o campo tipo (ajuste solicitado) */
+function normalizaTipo(raw) {
+  let t = (raw ?? '').toString().trim();
+  if (t.toLowerCase() === 'jovens rurais e professores') {
+    t = 'Curso em Meio Ambiente para jovens rurais e professores';
+  }
+  return t;
+}
+
+/* Popup HTML */
+function popupSemarhHTML({ municipio, pessoas, tipo }) {
+  return `
+    <div style="font-weight:bold; text-align:center; margin-bottom:6px;">
+      SEMARH – CURSOS E CAMPANHAS
+    </div>
+    <table style="border-collapse:collapse; width:100%; font-size:.95em;">
+      <tr>
+        <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #ddd; font-weight:bold;">Município:</th>
+        <td style="text-align:right; padding:6px 8px; border-bottom:1px solid #ddd;">${municipio}</td>
+      </tr>
+      <tr>
+        <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #ddd; font-weight:bold;">Quantidade de pessoas:</th>
+        <td style="text-align:right; padding:6px 8px; border-bottom:1px solid #ddd;">${pessoas}</td>
+      </tr>
+      <tr>
+        <th style="text-align:left; padding:6px 8px; border-bottom:1px solid #ddd; font-weight:bold;">Tipo:</th>
+        <td style="text-align:right; padding:6px 8px; border-bottom:1px solid #ddd;">${tipo}</td>
+      </tr>
+    </table>`;
+}
+
+/* Cria os pontos com base no SEMARH.geojson */
+let semarhLayer = null;
+
+function buildSemarhPoints() {
+  fetch("SEMARH.geojson")
+    .then(r => r.json())
+    .then(fc => {
+      const markers = [];
+
+      (fc.features || []).forEach(feat => {
+        try {
+          const p = feat.properties || {};
+          const tipoRaw = normalizaTipo(p.LAYER ?? p.layer ?? '-');
+
+          // 1) preferir centro visual do MUNICÍPIO do atributo (se existir)
+          const nomeMunAttr = (p.NM_MUN || p.MUNICIPIO || p.Municipio || '').toString().trim();
+          let lat = null, lng = null;
+
+          if (nomeMunAttr && municipiosLayer) {
+            const alvo = nomeMunAttr.toLowerCase();
+            municipiosLayer.eachLayer(l => {
+              if (lat !== null) return;
+              const nm = (l.feature?.properties?.NM_MUN || '').toString().trim().toLowerCase();
+              if (nm === alvo && l.feature?.geometry) {
+                try {
+                  const c = turf.centerOfMass(l.feature);
+                  [lng, lat] = c.geometry.coordinates;
+                } catch {}
+              }
+            });
+          }
+
+          // 2) fallback: centroide da própria feição SEMARH
+          if (lat === null || lng === null) {
+            const c = turf.centroid(feat);
+            [lng, lat] = c.geometry.coordinates;
+          }
+
+          // 3) nome do município para exibição
+          const munExib = nomeMunAttr || getMunicipioAtLatLng({ lat, lng }) || '-';
+
+          // 4) ícone e marcador
+          const icon = L.divIcon({
+            className: "semarh-marker",
+            html: semarhSVG(tipoRaw),
+            iconSize: [34,34],
+            iconAnchor: [17,17]
+          });
+
+          const m = L.marker([lat, lng], { icon, pane: 'pane-semarh' });
+          m.bindTooltip("SEMARH – CURSOS E CAMPANHAS", {
+            sticky: true, direction: 'top', opacity: 0.95, offset: [0,-6]
+          });
+          m.on('click', () => {
+            m.bindPopup(popupSemarhHTML({
+              municipio: munExib,
+              pessoas: (p.PESSOAS ?? p.pessoas ?? '-'),
+              tipo: tipoRaw
+            })).openPopup();
+          });
+
+          markers.push(m);
+        } catch {}
+      });
+
+      // cria/atualiza o layer group
+      if (semarhLayer) {
+        map.removeLayer(semarhLayer);
+        try { layersControl.removeLayer(semarhLayer); } catch {}
+      }
+      semarhLayer = L.layerGroup(markers, { pane: 'pane-semarh' }).addTo(map);
+
+      // adiciona ao controle de camadas
+      if (typeof layersControl !== 'undefined') {
+        layersControl.addOverlay(semarhLayer, "SEMARH");
+      }
+    });
+}
+
+// Dispara quando os municípios estiverem prontos (para usar seus centroides)
+if (municipiosLayer && municipiosLayer.once) {
+  municipiosLayer.once('data:loaded', buildSemarhPoints);
+} else {
+  setTimeout(buildSemarhPoints, 1200);
+}
+
+
+
+
+
+
+
+
+// === Pane e camada PSI (ATIVA) ===
+map.createPane('pane-psi');
+map.getPane('pane-psi').style.zIndex = 450;
+
+function stylePSI(f){
+  return { color:'#3F51B5', weight:4, fillColor:'#9FA8DA', fillOpacity:0.35 };
+}
+function highlightPSI(e){
+  e.target.setStyle({ color:'#1A237E', weight:4, fillColor:'#C5CAE9', fillOpacity:0.55 });
+  if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
+}
+function resetHighlightPSI(e){ psiLayer.resetStyle(e.target); }
+
+// Busca atributos do cadastro base (municipiosLayer) por código ou nome
+function getBaseMunicipioProps(propsPSI){
+  const cod = propsPSI?.CD_MUN ?? propsPSI?.cod_mun ?? null;
+  const nom = (propsPSI?.NM_MUN ?? propsPSI?.nome ?? propsPSI?.municipio ?? '').toString().trim().toLowerCase();
+  if (cod != null && muniByCode.has(String(cod))) return muniByCode.get(String(cod));
+  if (nom && muniByName.has(nom)) return muniByName.get(nom);
+  return null;
+}
+
+function onEachPSI(feature, layer){
+  layer.on({ mouseover: highlightPSI, mouseout: resetHighlightPSI });
+
+  layer.on('click', ()=>{
+    const baseProps = getBaseMunicipioProps(feature.properties) || {};
+    const html = `
+      <div style="font-weight:bold; text-align:center; margin-bottom:6px;">Município PSI</div>
+      ${generateInfoContent(baseProps)}
+      <button class="psi-download" style="margin-top:6px;">Baixar KML (PSI)</button>
+    `;
+    layer.bindPopup(html).openPopup();
+
+    layer.once('popupopen', (e)=>{
+      const el = e.popup.getElement();
+      const btn = el?.querySelector('.psi-download');
+      if (!btn) return;
+      btn.addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        let kml = tokml({ type:"FeatureCollection", features:[feature] });
+        const estilo = `
+          <Style id="psiStyle">
+            <LineStyle><color>ffff7f00</color><width>3</width></LineStyle>
+            <PolyStyle><color>66daa6ff</color><fill>1</fill><outline>1</outline></PolyStyle>
+          </Style>`;
+        kml = kml
+          .replace("</Document>", `${estilo}</Document>`)
+          .replace(/<Placemark>/g,'<Placemark><styleUrl>#psiStyle</styleUrl>');
+        const nomeArq = (feature.properties?.NM_MUN || 'municipio_psi')
+          .toString().normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+          .replace(/[^\w\s-]/g,"").replace(/\s+/g,"_");
+        const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = `${nomeArq}.kml`; a.click();
+        URL.revokeObjectURL(url);
+      });
+    });
+  });
+}
+
+// Nome do arquivo PSI (use exatamente como está no servidor)
+const psiLayer = new L.GeoJSON.AJAX("municipios%20PSI.geojson", {
+  pane: 'pane-psi',
+  style: stylePSI,
+  onEachFeature: onEachPSI
+}).addTo(map);
+
+// Ajusta o mapa quando carregar PSI
+psiLayer.on('data:loaded', ()=>{
+  try { map.fitBounds(psiLayer.getBounds(), { padding:[20,20] }); } catch(_){}
+});
+
+
+
+
+
+    /* === Litígio === */
+    function onEachLitigio(feature, layer){
+      layer.on({ mouseover: highlightFeature, mouseout: e=>litigioLayer.resetStyle(e.target) });
+     layer.bindPopup(`<b>Litígio</b><br><div style="margin-top:5px;">
+  <button class="download-btn" data-format="kml">Baixar KML</button>
+</div>`);      layer.on("popupopen", ()=>{
+        const btn = document.querySelector(".download-btn");
+        if (btn) btn.onclick = ()=>{
+          let kml = tokml({ type:"FeatureCollection", features:[feature] });
+          const estiloKML = `
+            <Style id="litigioStyle">
+              <LineStyle><color>ff00ff00</color><width>3</width></LineStyle>
+              <PolyStyle><color>00ffffff</color><fill>1</fill><outline>1</outline></PolyStyle>
+            </Style>`;
+          kml = kml.replace("</Document>", `${estiloKML}</Document>`).replace(/<Placemark>/g,'<Placemark><styleUrl>#litigioStyle</styleUrl>');
+          const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+          const url = URL.createObjectURL(blob); const a = document.createElement("a");
+          a.href = url; a.download = "litigio.kml"; a.click(); URL.revokeObjectURL(url);
+        };
+      });
+    }
+   const litigioLayer = new L.GeoJSON.AJAX("litigio.geojson", { 
+  pane: 'pane-litigio',
+  style:{ color:'red', weight:2 }, 
+  onEachFeature: onEachLitigio 
+}).addTo(map);
+    /* === Linha Imperial === */
+    function onEachImperial(feature, layer){
+      layer.on({ mouseover: highlightFeature, mouseout: e=>linhaImperialLayer.resetStyle(e.target) });
+      layer.bindPopup(`<b>Linha Imperial</b><br><button class="download-btn" style="margin-top:5px;">Baixar KML</button>`);
+      layer.on("popupopen", ()=>{
+        const btn = document.querySelector(".download-btn");
+        if (btn) btn.onclick = ()=>{
+          let kml = tokml({ type:"FeatureCollection", features:[feature] });
+          const estiloKML = `
+            <Style id="imperialStyle">
+              <LineStyle><color>ff00a5ff</color><width>3</width></LineStyle>
+              <PolyStyle><color>00ffffff</color><fill>1</fill><outline>1</outline></PolyStyle>
+            </Style>`;
+          kml = kml.replace("</Document>", `${estiloKML}</Document>`).replace(/<Placemark>/g,'<Placemark><styleUrl>#imperialStyle</styleUrl>');
+          const blob = new Blob([kml], { type:"application/vnd.google-earth.kml+xml" });
+          const url = URL.createObjectURL(blob); const a = document.createElement("a");
+          a.href = url; a.download = "linha_imperial.kml"; a.click(); URL.revokeObjectURL(url);
+        };
+      });
+    }
+    const linhaImperialLayer = new L.GeoJSON.AJAX("linha_imperial.geojson", { 
+  pane: 'pane-imperial',
+  style:{ color:'blue', weight:2, dashArray:'5,5' }, 
+  onEachFeature: onEachImperial 
+}).addTo(map);
+
+
+
+
+    /* === Controle de camadas embrulhado === */
+    const baseMaps = { "OpenStreetMap": osmLayer, "Esri Satélite": esriSat, "Esri Terrain": esriTerrain, "Esri Road": esriRoad };
+   const overlayMaps = {
+  "Territórios": territoriosLayer,
+  "Municípios": municipiosLayer,
+  "Litígio": litigioLayer,
+  "Linha Imperial": linhaImperialLayer,
+
+ 
+
+  
+}; const layersControl = L.control.layers(baseMaps, overlayMaps, { collapsed:false, position:'topleft' }).addTo(map);
+// === Povos e Comunidades Tradicionais ===
+const pctLayer = new L.GeoJSON.AJAX("PCTs.geojson", {
+  pane: 'pane-pct',
+  style: stylePCT,
+  pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+    radius: 6, color:'#FF6600', weight:2, fillColor:'#FF9800', fillOpacity:0.9
+  }),
+  onEachFeature: onEachPCT
+}).addTo(map);
+
+// Camada: Assentamentos Rurais (INTERPI)
+const assentLayer = new L.GeoJSON.AJAX("Assentamentos.geojson", {
+  pane: 'pane-assentamentos',
+  style: styleAssent,
+  onEachFeature: onEachAssent
+}).addTo(map); // se quiser iniciar desligada, remova o .addTo(map)
+
+// Centraliza quando carregar (opcional)
+assentLayer.on('data:loaded', ()=>{
+  try { map.fitBounds(assentLayer.getBounds(), { padding:[20,20] }); } catch(_){}
+});
+
+
+
+
+
+layersControl.addOverlay(cisternasLayer, "Cisternas");
+
+layersControl.addOverlay(pctLayer, "Povos e Comunidades Tradicionais");
+layersControl.addOverlay(assentLayer, "Assentamentos Rurais (INTERPI)");
+layersControl.addOverlay(passagensLayer, "Passagens Molhadas");
+
+
+    map.whenReady(()=>{
+      const panel = document.querySelector('.leaflet-control-layers');
+      if (panel) {
+        panel.classList.add('collapsed-panel');
+        const wrapper = document.createElement('div');
+        wrapper.id = 'camadasWrapper';
+        const header = document.createElement('div');
+        header.id = 'camadasHeader';
+        header.innerText = 'Visualizar Camadas';
+        header.addEventListener('click', ()=> panel.classList.toggle('collapsed-panel'));
+        wrapper.appendChild(header);
+        wrapper.appendChild(panel);
+        document.body.appendChild(wrapper);
+      }
+    });
+    function recolherCamadas() {
+  const panel = document.querySelector('.leaflet-control-layers');
+  if (panel && !panel.classList.contains('collapsed-panel')) {
+    panel.classList.add('collapsed-panel');
+  }
+}
+
+(function ativarFechamentoCamadas(){
+  // fecha ao clicar fora
+  const onBodyClick = (e) => {
+    const wrapper = document.getElementById('camadasWrapper');
+    const panel = document.querySelector('.leaflet-control-layers');
+    if (!wrapper || !panel) return;
+
+    const aberto = !panel.classList.contains('collapsed-panel');
+    // se estiver fechado ou o clique foi dentro do wrapper, não faz nada
+    if (!aberto || wrapper.contains(e.target)) return;
+
+    recolherCamadas();
+  };
+
+  // fecha com Esc
+  const onEsc = (e) => {
+    if (e.key === 'Escape') recolherCamadas();
+  };
+
+  // impede que cliques dentro do wrapper “vazem” para o documento
+  const bloquearDentro = () => {
+    const wrapper = document.getElementById('camadasWrapper');
+    if (!wrapper) return;
+    wrapper.addEventListener('click', e => e.stopPropagation());
+    wrapper.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
+  };
+
+  // inicializa agora e também quando o mapa criar o wrapper
+  document.addEventListener('click', onBodyClick);
+  document.addEventListener('touchstart', onBodyClick, {passive:true});
+  document.addEventListener('keydown', onEsc);
+
+  // se o wrapper já existir, bloqueia já; senão, tenta depois
+  if (document.getElementById('camadasWrapper')) {
+    bloquearDentro();
+  } else {
+    // garante após criação pelo map.whenReady
+    const obs = new MutationObserver(() => {
+      if (document.getElementById('camadasWrapper')) {
+        bloquearDentro();
+        obs.disconnect();
+      }
+    });
+    obs.observe(document.body, {childList:true, subtree:true});
+  }
+})();
+
+    /* === Legenda (montada diretamente no body; robusto) === */
+    function addLegend() {
+      // Se necessário, popula cores a partir das features carregadas
+      if (!territorioColors.length && territoriosLayer) {
+        territoriosLayer.eachLayer(l => {
+          const p = l.feature?.properties || {};
+          getColorForTerritorio(p.NM_TD || 'Território', p.fid || '');
+        });
+      }
+
+      // Remove instâncias anteriores
+      document.querySelectorAll('.legend, .legend-toggle').forEach(el => el.remove());
+
+      // Botão e caixa
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'legend-toggle attention';
+      toggleBtn.textContent = 'Selecionar  territórios';
+
+      const legendDiv = document.createElement('div');
+      legendDiv.className = 'legend collapsed';
+      legendDiv.innerHTML = '<div style="text-align:center;font-weight:bold;margin-bottom:5px;">Territórios de Desenvolvimento</div>';
+
+      territorioColors.slice().sort((a,b)=>(a.codigo||0)-(b.codigo||0)).forEach(t => {
+        const item = document.createElement('div');
+        item.className = 'territorio-item';
+        item.dataset.nome = t.nome;
+        item.style.cssText = 'cursor:pointer;display:flex;align-items:center;gap:6px;margin-bottom:6px;';
+        item.innerHTML = `<i style="background:${t.cor};width:24px;height:24px;display:inline-block;"></i>
+                          <span style="font-size:13px;">${t.label}</span>`;
+        item.addEventListener('click', () => highlightTerritory(t.nome));
+        legendDiv.appendChild(item);
+      });
+
+     
+
+      toggleBtn.addEventListener('click', () => {
+        legendDiv.classList.toggle('collapsed');
+        toggleBtn.textContent = legendDiv.classList.contains('collapsed')
+          ? 'Selecionar  territórios'
+          : 'Ocultar territórios';
+        toggleBtn.classList.remove('attention');
+      });
+
+      document.body.appendChild(toggleBtn);
+      document.body.appendChild(legendDiv);
+    }
+
+    /* Lat/Lon -> UTM + coordenadas no rodapé */
+    function latLonToUTM(lat, lon) {
+      const a=6378137,f=1/298.257223563,k0=0.9996,e=Math.sqrt(f*(2-f));
+      const zone=Math.floor((lon+180)/6)+1, l0=(zone-1)*6-180+3, l0r=l0*Math.PI/180;
+      const p=lat*Math.PI/180, l=lon*Math.PI/180;
+      const N=a/Math.sqrt(1-e*e*Math.sin(p)*Math.sin(p)), T=Math.tan(p)*Math.tan(p), C=(e*e/(1-e*e))*Math.cos(p)*Math.cos(p), A=Math.cos(p)*(l-l0r);
+      const M=a*((1-e*e/4-3*e**4/64-5*e**6/256)*p-(3*e*e/8+3*e**4/32+45*e**6/1024)*Math.sin(2*p)+(15*e**4/256+45*e**6/1024)*Math.sin(4*p)-(35*e**6/3072)*Math.sin(6*p));
+      const x=k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*(e*e/(1-e*e)))*A**5/120)+500000;
+      let y=k0*(M+N*Math.tan(p)*(A**2/2+(5-T+9*C+4*C**2)*A**4/24+(61-58*T+T*T+600*C-330*(e*e/(1-e*e)))*A**6/720));
+      if(lat<0) y+=10000000;
+      return { x, y, zone };
+    }
+    const coordsDiv = document.getElementById('coords');
+    map.on('mousemove', e=>{
+      const lat=e.latlng.lat.toFixed(5), lon=e.latlng.lng.toFixed(5);
+      const utm=latLonToUTM(e.latlng.lat,e.latlng.lng);
+      coordsDiv.innerHTML = `Lat: ${lat}, Lon: ${lon}<br>E: ${utm.x.toFixed(2)}, N: ${utm.y.toFixed(2)}<br>Fuso: ${utm.zone}`;
+    });
+
+    /* Upload KML/KMZ */
+    const uploadBtnEl=document.getElementById('uploadBtn');
+    const uploadInputEl=document.getElementById('uploadInput');
+    uploadBtnEl.addEventListener('click', ()=>uploadInputEl.click());
+    uploadInputEl.addEventListener('change', async (e)=>{
+      const files=[...e.target.files];
+      for (const file of files){
+        const name=file.name;
+        try{
+          if(name.toLowerCase().endsWith('.kml')){
+            const text=await file.text(); addKMLTextToMap(text,name);
+          } else if(name.toLowerCase().endsWith('.kmz')){
+            const arrayBuf=await file.arrayBuffer(); const zip=await JSZip.loadAsync(arrayBuf);
+            let kmlEntry=null; zip.forEach((relPath,zipEntry)=>{ if(!kmlEntry && relPath.toLowerCase().endsWith('.kml')) kmlEntry=zipEntry; });
+            if(!kmlEntry){ alert('KMZ sem arquivo KML interno: '+name); continue; }
+            const kmlText=await kmlEntry.async('text'); addKMLTextToMap(kmlText,name);
+          } else { alert('Formato não suportado: '+name); }
+        } catch(err){ console.error(err); alert('Erro ao carregar '+name+': '+err.message); }
+      }
+      uploadInputEl.value='';
+    });
+    function addKMLTextToMap(kmlText, layerName){
+  // cria um GeoJSON “alvo” já amarrado ao pane de upload (topo)
+  const alvo = L.geoJSON(null, { pane: 'pane-upload' });
+
+  // o omnivore vai preencher esse GeoJSON alvo
+  const kmlLayer = omnivore.kml.parse(kmlText, null, alvo).addTo(map);
+
+  // opcional: garantir topo dentro do próprio pane
+  if (kmlLayer.bringToFront) kmlLayer.bringToFront();
+
+  // adiciona no controle de camadas
+  if (layersControl) layersControl.addOverlay(kmlLayer, layerName);
+
+  // ajusta o mapa
+  try { map.fitBounds(kmlLayer.getBounds()); } catch (_) {}
+}
+
+    /* Rosa dos Ventos (fixa) */
+    const rosaSBG = L.control({ position: "bottomleft" });
+    rosaSBG.onAdd = function () {
+      const div = L.DomUtil.create("div", "rosa-sbg");
+      div.innerHTML = `
+        <svg width="140" height="140" viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="70,40 90,80 50,80" fill="black" />
+          <text x="70" y="30" font-size="36" font-weight="bold" fill="black" stroke="black" stroke-width="1" text-anchor="middle" dominant-baseline="middle">N</text>
+        </svg>`;
+      return div;
+    };
+    rosaSBG.addTo(map);
+
+    /* Estado do Piauí + Biomas recortados */
+    fetch("piaui.geojson").then(r=>r.json()).then(piauiData=>{
+      const piauiLayer = L.geoJSON(piauiData,{ 
+  pane: 'pane-piaui',
+  style:{ color:'yellow', weight:3, fillColor:'transparent', fillOpacity:0 }, 
+  onEachFeature:(f,l)=>l.bindPopup("Estado do Piauí") 
+}).addTo(map);      piauiLayer.bringToBack();
+      layersControl.addOverlay(piauiLayer,"Estado do Piauí");
+
+      const worldBounds = turf.bboxPolygon([-90,-60,-25,15]);
+      const mask = turf.difference(worldBounds, piauiData.features[0]);
+     L.geoJSON(mask,{ 
+  pane: 'pane-mask',
+  style:{ fillColor:'black', fillOpacity:0.5, color:'black', weight:0 }, 
+  interactive:false 
+}).addTo(map);
+
+      function styleBiomas(feature){
+        const bioma=(feature.properties.Bioma||feature.properties.bioma||"").toLowerCase();
+        switch(bioma){
+          case "amazônia": case "amazonia": return { color:"#1B5E20", fillColor:"#1B5E20", fillOpacity:0.5, weight:1 };
+          case "caatinga": return { color:"#E6B800", fillColor:"#E6B800", fillOpacity:0.5, weight:1 };
+          case "cerrado": return { color:"#4CAF50", fillColor:"#4CAF50", fillOpacity:0.5, weight:1 };
+          case "mata atlântica": case "mata atlantica": return { color:"#00695C", fillColor:"#00695C", fillOpacity:0.5, weight:1 };
+          case "pantanal": return { color:"#8D6E63", fillColor:"#8D6E63", fillOpacity:0.5, weight:1 };
+          case "pampa": return { color:"#A1887F", fillColor:"#A1887F", fillOpacity:0.5, weight:1 };
+          default: return { color:"#9E9E9E", fillColor:"#9E9E9E", fillOpacity:0.5, weight:1 };
+        }
+      }
+
+      fetch("biomas.geojson").then(r=>r.json()).then(biomasData=>{
+        const biomasRecortados={ type:"FeatureCollection", features:[] };
+        biomasData.features.forEach(f=>{
+          try{
+            const inter=turf.intersect(f, piauiData.features[0]);
+            if(inter){ inter.properties=f.properties; biomasRecortados.features.push(inter); }
+          }catch(e){ console.warn("Erro ao recortar bioma:", e); }
+        });
+        const biomasLayer = L.geoJSON(biomasRecortados,{
+  pane: 'pane-biomas',
+  style: styleBiomas,
+  onEachFeature: (feature, layer)=>layer.bindPopup(`<b>Bioma:</b> ${feature.properties.Bioma||feature.properties.bioma||"Bioma"}`)
+})
+        biomasLayer.bringToBack();
+        layersControl.addOverlay(biomasLayer, "Biomas");
+      });
+    });
+
+    /* ESC limpa seleção e recolhe busca */
+    document.addEventListener('keydown', e=>{
+      if (e.key==="Escape") {
+        territorioSelecionado=null;
+        territoriosLayer.eachLayer(layer=>territoriosLayer.resetStyle(layer));
+        const sc = document.getElementById('searchContainer');
+        const si = document.getElementById('searchMunicipio');
+        const lm = document.getElementById('listaMunicipios');
+        if (sc.classList.contains('expanded')) {
+          sc.classList.remove('expanded');
+          si.value = '';
+          lm.style.display='none';
+        }
+      }
+    });
+
+    // Ajuste de bounds inicial
+    setTimeout(()=>{
+      const group=new L.featureGroup([territoriosLayer, municipiosLayer]);
+      try { map.fitBounds(group.getBounds(), { padding:[20,20] }); } catch(_) {}
+    }, 800);
+
+    // Resize handler garante 100% do viewport
+    function ajustarMapa(){ document.getElementById('map').style.height=window.innerHeight+'px'; }
+    window.addEventListener('resize', ajustarMapa);
+    window.addEventListener('orientationchange', ajustarMapa);
+    ajustarMapa();
+
+    // Controle da barra de pesquisa expansível + clique fora
+    (()=>{
+      const sc = document.getElementById('searchContainer');
+      const st = document.getElementById('searchToggle');
+      const si = document.getElementById('searchMunicipio');
+      const lm = document.getElementById('listaMunicipios');
+      st.addEventListener('click', ()=>{
+        sc.classList.toggle('expanded');
+        if (sc.classList.contains('expanded')) si.focus();
+        else { si.value=''; lm.style.display='none'; }
+      });
+      document.addEventListener('click', (e)=>{
+        if (!sc.contains(e.target) && sc.classList.contains('expanded')) {
+          sc.classList.remove('expanded');
+          si.value=''; lm.style.display='none';
+        }
+      });
+    })();
+
+   /* Busca Fuzzy */
+let highlightedIndex = -1;
+
+function levenshtein(a,b){
+  const m=[];
+  for(let i=0;i<=b.length;i++){m[i]=[i]}
+  for(let j=0;j<=a.length;j++){m[0][j]=j}
+  for(let i=1;i<=b.length;i++){
+    for(let j=1;j<=a.length;j++){
+      m[i][j]=(b.charAt(i-1)===a.charAt(j-1))?m[i-1][j-1]:
+        Math.min(m[i-1][j-1]+1, Math.min(m[i][j-1]+1, m[i-1][j]+1))
+    }
+  }
+  return m[b.length][a.length]
+}
+
+function updateHighlight(itens){
+  itens.forEach((item,idx)=>{
+    if(idx===highlightedIndex){
+      item.classList.add('highlighted');
+      item.scrollIntoView({block:'nearest'});
+    } else {
+      item.classList.remove('highlighted');
+    }
+  });
+}
+
+const si = document.getElementById('searchMunicipio');
+const lm = document.getElementById('listaMunicipios');
+
+si.addEventListener('input', function(){
+  const termo = this.value.trim().toLowerCase();
+  lm.innerHTML = '';
+  highlightedIndex = -1;
+
+  if(!termo){
+    lm.style.display = 'none';
+    return;
+  }
+
+  const resultados = [];
+  municipiosLayer.eachLayer(layer=>{
+    const nomeMun = layer.feature?.properties?.NM_MUN;
+    if(!nomeMun) return;
+    const nomeLower = nomeMun.toLowerCase();
+    if (nomeLower.includes(termo)) resultados.push({nome:nomeMun, layer});
+    else if (levenshtein(termo, nomeLower) <= 3) resultados.push({nome:nomeMun, layer});
+  });
+
+  if(!resultados.length){
+    lm.style.display='none';
+    return;
+  }
+
+  resultados.sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+
+  resultados.forEach(item=>{
+    const div = document.createElement('div');
+    div.textContent = item.nome;
+
+div.addEventListener('click', ()=>{
+  map.fitBounds(item.layer.getBounds(), { padding:[20,20] });
+  if (municipioSelecionado) municipiosLayer.resetStyle(municipioSelecionado);
+  municipioSelecionado = item.layer;
+  item.layer.setStyle({ weight:4, color:'#ff6600', fillColor:'#ff6600', fillOpacity:0.5 });
+  item.layer.closePopup();
+  lm.style.display = 'none';
+  si.value = item.nome;
+
+  // ► Recolhe a legenda na seleção pela busca
+  recolherLegenda();
+});
+
+    lm.appendChild(div);
+  });
+
+  lm.style.display = 'block';
+});
+
+si.addEventListener('keydown', (e)=>{
+  const itens = lm.querySelectorAll('div');
+
+  if (e.key === 'ArrowDown'){
+    e.preventDefault();
+    if (highlightedIndex < itens.length - 1){
+      highlightedIndex++;
+      updateHighlight(itens);
+    }
+  } else if (e.key === 'ArrowUp'){
+    e.preventDefault();
+    if (highlightedIndex > 0){
+      highlightedIndex--;
+      updateHighlight(itens);
+    }
+  } else if (e.key === 'Enter'){
+    e.preventDefault();
+    if (highlightedIndex >= 0 && highlightedIndex < itens.length){
+      itens[highlightedIndex].click(); // usa o clique acima (sem popup)
+    } else {
+      lm.style.display = 'none';
+    }
+  }
+});
+function recolherLegenda() {
+  const legendDiv = document.querySelector('.legend');
+  const toggleBtn = document.querySelector('.legend-toggle');
+  if (legendDiv && toggleBtn) {
+    legendDiv.classList.add('collapsed');
+    toggleBtn.textContent = 'Selecionar  territórios';
+    toggleBtn.classList.remove('attention');
+  }
+}
+  </script>
+<!-- Code injected by live-server -->
+<script>
+	// <![CDATA[  <-- For SVG support
+	if ('WebSocket' in window) {
+		(function () {
+			function refreshCSS() {
+				var sheets = [].slice.call(document.getElementsByTagName("link"));
+				var head = document.getElementsByTagName("head")[0];
+				for (var i = 0; i < sheets.length; ++i) {
+					var elem = sheets[i];
+					var parent = elem.parentElement || head;
+					parent.removeChild(elem);
+					var rel = elem.rel;
+					if (elem.href && typeof rel != "string" || rel.length == 0 || rel.toLowerCase() == "stylesheet") {
+						var url = elem.href.replace(/(&|\?)_cacheOverride=\d+/, '');
+						elem.href = url + (url.indexOf('?') >= 0 ? '&' : '?') + '_cacheOverride=' + (new Date().valueOf());
+					}
+					parent.appendChild(elem);
+				}
+			}
+			var protocol = window.location.protocol === 'http:' ? 'ws://' : 'wss://';
+			var address = protocol + window.location.host + window.location.pathname + '/ws';
+			var socket = new WebSocket(address);
+			socket.onmessage = function (msg) {
+				if (msg.data == 'reload') window.location.reload();
+				else if (msg.data == 'refreshcss') refreshCSS();
+			};
+			if (sessionStorage && !sessionStorage.getItem('IsThisFirstTime_Log_From_LiveServer')) {
+				console.log('Live reload enabled.');
+				sessionStorage.setItem('IsThisFirstTime_Log_From_LiveServer', true);
+			}
+		})();
+	}
+	else {
+		console.error('Upgrade your browser. This Browser is NOT supported WebSocket for Live-Reloading.');
+	}
+	// ]]>
+</script>
+<div id="creditosLegenda">
+  Coordenação de Cartografia e Análise Espacial<br>
+ CCAE/GEID/DEAE/CIET/SEPLAN
+</div>
+
+
+</body>
+</html>

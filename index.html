@@ -691,18 +691,16 @@ function wireDownloadKML(layer, feature){
   });
 }
 
-/* abre popup no hover e também no clique; efeito hover é via CSS */
 function onEachCisterna(feature, layer){
   const show = (ev)=>{
     const at = ev?.latlng || (layer.getLatLng && layer.getLatLng()) || undefined;
-    layer.bindPopup(popupCisternaHTML(feature)).openPopup(at);
+    layer.bindPopup(popupCisternaHTML(feature), { autoPan: true, closeOnClick: false })
+         .openPopup(at);
     wireDownloadKML(layer, feature);
   };
-  layer.on('mouseover', show);
-  layer.on('click', show);
-  layer.on('mouseout', ()=> layer.closePopup());
+  layer.on('click', show);           // abre no clique
+  // REMOVIDO: mouseover / mouseout (não fecha mais sozinho)
 }
-
 /* camada a partir do GeoJSON (pontos viram markers com o ícone da caixa d’água) */
 const cisternasLayer = new L.GeoJSON.AJAX("cisternas.geojson", {
   pane: 'pane-cisternas',
